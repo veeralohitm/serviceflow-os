@@ -21,7 +21,7 @@ Scaffolding in progress — see the epics checklist below. Checked items are don
 
 ## Epics
 
-- [x] Epic 1 — Platform foundation *(in progress: repo, domain model, monorepo layout)*
+- [x] Epic 1 — Platform foundation *(repo, domain model, monorepo layout, all 3 services + Postgres running locally)*
 - [ ] Epic 2 — Identity, tenancy, and roles
 - [ ] Epic 3 — Customer and location CRM
 - [ ] Epic 4 — Staff and operations setup
@@ -36,4 +36,16 @@ Scaffolding in progress — see the epics checklist below. Checked items are don
 
 ## Local development
 
-Setup instructions land at Checkpoint 1, Day 2, once `frontend/`, `backend-spring/`, and `backend-node/` are bootstrapped.
+Start Postgres first, then each service in its own terminal tab.
+
+```bash
+docker compose up -d postgres        # Postgres on localhost:5432
+
+cd backend-spring && ./mvnw spring-boot:run   # http://localhost:8081/api/health
+cd backend-node && npm start                  # http://localhost:4000/health
+cd frontend && npm run dev                    # http://localhost:5173 (or next free port)
+```
+
+**Ports:** Spring Boot defaults to 8080 and Vite to 5173, but both are configurable — if something else on your machine already holds those ports, Spring Boot needs `server.port` set in `backend-spring/src/main/resources/application.properties`, and Vite will just print whichever port it fell back to.
+
+**Database credentials** (local dev only — see `docker-compose.yml`): db `serviceflow`, user `serviceflow`, password `serviceflow_dev`.
