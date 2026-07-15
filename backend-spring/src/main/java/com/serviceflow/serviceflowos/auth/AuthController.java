@@ -1,5 +1,7 @@
 package com.serviceflow.serviceflowos.auth;
 
+import com.serviceflow.serviceflowos.domain.AuditEvent;
+import com.serviceflow.serviceflowos.domain.AuditEventRepository;
 import com.serviceflow.serviceflowos.domain.User;
 import com.serviceflow.serviceflowos.domain.UserRepository;
 import com.serviceflow.serviceflowos.security.JwtService;
@@ -21,11 +23,17 @@ public class AuthController {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final AuditEventRepository auditEventRepository;
 
-    public AuthController(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtService jwtService) {
+    public AuthController(
+            UserRepository userRepository,
+            PasswordEncoder passwordEncoder,
+            JwtService jwtService,
+            AuditEventRepository auditEventRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.auditEventRepository = auditEventRepository;
     }
 
     @PostMapping("/login")
@@ -36,11 +44,18 @@ public class AuthController {
                 && passwordEncoder.matches(request.password(), userOpt.get().getPasswordHash());
 
         if (!valid) {
+            auditEventRepository.save(new AuditEvent(
+                    userOpt.map(User::getTenant).orElse(null),
+                    userOpt.orElse(null),
+                    "LOGIN_FAILURE",
+                    "email attempted: " + request.email()));
             return ResponseEntity.status(401).body(Map.of("error", "Invalid email or password"));
         }
 
         User user = userOpt.get();
         String token = jwtService.generateToken(user);
+
+        auditEventRepository.save(new AuditEvent(user.getTenant(), user, "LOGIN_SUCCESS", null));
 
         return ResponseEntity.ok(new LoginResponse(
                 token,

@@ -103,7 +103,7 @@ Every table except `Role` and seed/reference data carries a `tenant_id` — this
 `id, tenant_id, type (booking_confirmation/reminder/on_the_way/estimate_approval/payment_reminder/review_request), recipient_contact_id, channel, status, sent_at`
 
 **AuditEvent**
-`id, tenant_id, actor_user_id, action, entity_type, entity_id, metadata, created_at`
+`id, tenant_id, actor_user_id, action, metadata, created_at` — `entity_type`/`entity_id` dropped from the original sketch; Checkpoint 2 only logs auth events (`LOGIN_SUCCESS`/`LOGIN_FAILURE`), which have no entity to point at. Re-add if a future checkpoint audits entity-level changes (e.g. "who edited this invoice").
 
 ## Relationship summary
 
@@ -146,10 +146,16 @@ Per the PRD's non-goals, explicitly **out** for now:
 - Customer login/portal (Users are internal staff only)
 
 Simplifications from the raw PRD entity list, to revisit post-MVP:
-- `Role` is fixed reference data (5 rows), not a user-editable permission system.
-- `DispatchAssignment` doubles as both "current assignment" and reassignment history — no separate audit table needed yet; `AuditEvent` covers auth-sensitive actions only, per PRD Epic 2.
+- `Role` is fixed reference data (5 rows), not a user-editable permission system. **Implemented (Day 3)** as a plain Java `enum`, not a database table — five code-defined values don't earn a table + FK until roles become user-editable, which the PRD doesn't ask for.
+- `DispatchAssignment` doubles as both "current assignment" and reassignment history — no separate audit table needed yet; `AuditEvent` covers auth-sensitive actions only, per PRD Epic 2. **Implemented (Day 4)**: `AuditEvent` logs `LOGIN_SUCCESS`/`LOGIN_FAILURE` only so far.
 
 ## Open questions to confirm before Checkpoint 2 (auth)
 
-- [ ] Can one `Employee` hold more than one `Role` (e.g. a working manager who's also a technician)? Default assumption: one role per user for MVP.
-- [ ] Does `Job` belong to a `Location` directly, or only reachable via `Customer` → `Location`? Modeled above as a direct FK on `Job` for query simplicity.
+- [x] Can one `Employee` hold more than one `Role`? **Resolved (Day 3): no** — `User.role` is a single enum column, one role per user for MVP.
+- [ ] Does `Job` belong to a `Location` directly, or only reachable via `Customer` → `Location`? Modeled above as a direct FK on `Job` for query simplicity. Still open — not yet built (Checkpoint 5).
+
+## Checkpoint 2 implementation notes (Days 3–4)
+
+- **Tenant isolation pattern**: `JwtAuthFilter` reads `tenantId` out of the JWT claims and sets it on a request-scoped `TenantContext` (a cleared-per-request `ThreadLocal`). Every tenant-scoped query — `GET /api/users`, `GET /api/audit` so far — reads `TenantContext.get()` rather than trusting anything the client sends. This is the pattern every future feature (customers, jobs, invoices...) should follow: never query "all rows," always scope to the current tenant from the token, not from a request parameter a client could tamper with.
+- **Schema ownership**: Flyway migrations (`db/migration/V1__init_schema.sql`, `V2__audit_events.sql`, `V3__seed_demo_data.sql`) are now the source of truth for the database shape; `spring.jpa.hibernate.ddl-auto` is `validate`, not `update` — Hibernate checks the schema matches the entities but never changes it.
+- **Seed data**: two demo tenants ("Demo HVAC Co," "Acme Plumbing") each with one admin user, seeded via `V3__seed_demo_data.sql` rather than the temporary `DevDataSeeder` (removed Day 4). Real password hash generated once with the project's own `BCryptPasswordEncoder`, not a different tool's hash format.

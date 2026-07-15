@@ -38,19 +38,23 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             FilterChain filterChain) throws ServletException, IOException {
         String header = request.getHeader("Authorization");
 
-        if (header != null && header.startsWith("Bearer ")) {
-            String token = header.substring(7);
-            if (jwtService.isValid(token)) {
-                Claims claims = jwtService.extractClaims(token);
-                userRepository.findByEmail(claims.getSubject()).ifPresent(user -> {
-                    List<SimpleGrantedAuthority> authorities =
-                            List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
-                    var authToken = new UsernamePasswordAuthenticationToken(user, null, authorities);
-                    SecurityContextHolder.getContext().setAuthentication(authToken);
-                });
+        try {
+            if (header != null && header.startsWith("Bearer ")) {
+                String token = header.substring(7);
+                if (jwtService.isValid(token)) {
+                    Claims claims = jwtService.extractClaims(token);
+                    userRepository.findByEmail(claims.getSubject()).ifPresent(user -> {
+                        List<SimpleGrantedAuthority> authorities =
+                                List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
+                        var authToken = new UsernamePasswordAuthenticationToken(user, null, authorities);
+                        SecurityContextHolder.getContext().setAuthentication(authToken);
+                        TenantContext.set(user.getTenant().getId());
+                    });
+                }
             }
+            filterChain.doFilter(request, response);
+        } finally {
+            TenantContext.clear();
         }
-
-        filterChain.doFilter(request, response);
     }
 }
